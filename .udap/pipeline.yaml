@@ -79,6 +79,7 @@ stages:
       AWS_REGION: us-east-2
       SSH_USER: ${{ secrets.SSH_USER }}
       SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
     steps:
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
