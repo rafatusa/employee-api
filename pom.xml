@@ -25,19 +25,19 @@
   </properties>
 
   <dependencies>
-    <!-- Web -->
+    <!-- Web (servlet stack only) -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
 
-    <!-- Spring Security (for JWT filter) -->
+    <!-- Spring Security -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-security</artifactId>
     </dependency>
 
-    <!-- JPA + H2 -->
+    <!-- JPA + H2 in-memory -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>
@@ -48,19 +48,19 @@
       <scope>runtime</scope>
     </dependency>
 
-    <!-- Validation -->
+    <!-- Bean Validation -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-validation</artifactId>
     </dependency>
 
-    <!-- Actuator (/health) -->
+    <!-- Actuator (/actuator/health) -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
 
-    <!-- JWT (jjwt) -->
+    <!-- JWT — jjwt 0.12.x (non-deprecated API) -->
     <dependency>
       <groupId>io.jsonwebtoken</groupId>
       <artifactId>jjwt-api</artifactId>
@@ -79,7 +79,7 @@
       <scope>runtime</scope>
     </dependency>
 
-    <!-- DevTools (local dev only) -->
+    <!-- Dev tools (local only) -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-devtools</artifactId>
@@ -87,11 +87,17 @@
       <optional>true</optional>
     </dependency>
 
-    <!-- Test -->
+    <!-- Test — exclude spring-webflux to prevent reactive/servlet context conflict -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>org.springframework</groupId>
+          <artifactId>spring-webflux</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.springframework.security</groupId>
@@ -107,7 +113,7 @@
         <artifactId>spring-boot-maven-plugin</artifactId>
       </plugin>
 
-      <!-- Surefire: unit tests -->
+      <!-- Surefire: unit + API tests (*Test / *Tests) -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
@@ -122,7 +128,7 @@
         </configuration>
       </plugin>
 
-      <!-- Failsafe: integration tests -->
+      <!-- Failsafe: integration tests (*IT) -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-failsafe-plugin</artifactId>
@@ -144,7 +150,7 @@
   </build>
 
   <profiles>
-    <!-- Generate Surefire HTML report: mvn verify -Ptest-report -->
+    <!-- mvn verify -Ptest-report → target/site/surefire-report.html -->
     <profile>
       <id>test-report</id>
       <build>
@@ -168,19 +174,10 @@
               <linkXRef>false</linkXRef>
             </configuration>
           </plugin>
-          <!-- Need doxia sink for report rendering -->
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-site-plugin</artifactId>
             <version>3.12.1</version>
-            <executions>
-              <execution>
-                <id>attach-descriptor</id>
-                <goals>
-                  <goal>attach-descriptor</goal>
-                </goals>
-              </execution>
-            </executions>
           </plugin>
         </plugins>
       </build>
