@@ -87,17 +87,11 @@
       <optional>true</optional>
     </dependency>
 
-    <!-- Test — exclude spring-webflux to prevent reactive/servlet context conflict -->
+    <!-- Test -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
-      <exclusions>
-        <exclusion>
-          <groupId>org.springframework</groupId>
-          <artifactId>spring-webflux</artifactId>
-        </exclusion>
-      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.springframework.security</groupId>
