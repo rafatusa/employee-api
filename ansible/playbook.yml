@@ -113,7 +113,7 @@
       ansible.builtin.debug:
         msg: "Deploying JAR: {{ jar_path }}"
 
-    # ── systemd service (JWT_SECRET passed as JVM system property) ────────────
+    # ── systemd service (JWT_SECRET injected as inline Environment directive) ─
     - name: Write systemd unit for employee-api
       ansible.builtin.copy:
         dest: /etc/systemd/system/employee-api.service
@@ -127,7 +127,7 @@
           Group={{ app_group }}
           WorkingDirectory={{ app_dir }}
           Environment="JWT_SECRET={{ jwt_secret }}"
-          ExecStart=/usr/bin/java -Xms128m -Xmx384m -jar {{ jar_path }} --server.port={{ app_port }} --server.address=127.0.0.1
+          ExecStart=/usr/bin/java -jar {{ jar_path }} --server.port={{ app_port }} --server.address=127.0.0.1
           SuccessExitStatus=143
           TimeoutStopSec=30
           Restart=on-failure
@@ -215,13 +215,13 @@
       ansible.builtin.debug:
         var: svc_status.stdout_lines
 
-    # ── Wait for app to be ready ──────────────────────────────────────────────
+    # ── Wait for app to be ready (Spring Boot on t3.small needs up to 3 min) ──
     - name: Wait for application to respond on port {{ app_port }}
       ansible.builtin.wait_for:
         host: 127.0.0.1
         port: "{{ app_port }}"
-        timeout: 120
-        delay: 10
+        timeout: 180
+        delay: 5
 
   handlers:
     - name: Reload systemd
