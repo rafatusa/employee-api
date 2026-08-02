@@ -12,7 +12,9 @@
     app_port: 8080
     java_package: openjdk-17-jre-headless
     report_dir: /opt/employee-api/test-report
-    # jwt_secret is injected via --extra-vars from the pipeline (never lookup env)
+    secrets_dir: /etc/employee-api
+    secrets_file: /etc/employee-api/secrets.env
+    # jwt_secret is injected via --extra-vars from the pipeline
 
   tasks:
     # ── Wait for SSH ──────────────────────────────────────────────────────────
@@ -70,8 +72,30 @@
         group: "{{ app_group }}"
         mode: "0755"
 
+    # ── Secrets file (written BEFORE service unit; no shell/systemd parsing) ──
+    - name: Create secrets directory
+      ansible.builtin.file:
+        path: "{{ secrets_dir }}"
+        state: directory
+        owner: root
+        group: "{{ app_group }}"
+        mode: "0750"
+
+    - name: Write secrets env file
+      ansible.builtin.copy:
+        dest: "{{ secrets_file }}"
+        # Written as a plain key=value file — systemd EnvironmentFile reads this
+        # directly without any shell expansion or specifier substitution.
+        # The value is never on a command line and never touches ExecStart.
+        content: "JWT_SECRET={{ jwt_secret }}\n"
+        owner: root
+        group: "{{ app_group }}"
+        mode: "0640"
+      no_log: true
+      notify: Restart employee-api
+
     # ── Remove stale JARs before deploying fresh one ──────────────────────────
-    - name: Remove any existing JARs from app directory
+    - name: Find existing JARs in app directory
       ansible.builtin.find:
         paths: "{{ app_dir }}"
         patterns: "*.jar"
@@ -113,7 +137,7 @@
       ansible.builtin.debug:
         msg: "Deploying JAR: {{ jar_path }}"
 
-    # ── systemd service (JWT_SECRET injected as inline Environment directive) ─
+    # ── systemd unit — reads JWT_SECRET from EnvironmentFile, not command line ─
     - name: Write systemd unit for employee-api
       ansible.builtin.copy:
         dest: /etc/systemd/system/employee-api.service
@@ -126,17 +150,16 @@
           User={{ app_user }}
           Group={{ app_group }}
           WorkingDirectory={{ app_dir }}
-          Environment="JWT_SECRET={{ jwt_secret }}"
-          ExecStart=/usr/bin/java -jar {{ jar_path }} --server.port={{ app_port }} --server.address=127.0.0.1
+          EnvironmentFile={{ secrets_file }}
+          ExecStart=/usr/bin/java -Xms128m -Xmx384m -jar {{ jar_path }} --server.port={{ app_port }} --server.address=127.0.0.1
           SuccessExitStatus=143
           TimeoutStopSec=30
           Restart=on-failure
-          RestartSec=5
+          RestartSec=10
 
           [Install]
           WantedBy=multi-user.target
         mode: "0644"
-      no_log: true
       notify:
         - Reload systemd
         - Restart employee-api
@@ -186,7 +209,7 @@
         group: "{{ app_group }}"
         mode: "0644"
 
-    # ── Flush handlers so service restarts with latest config ─────────────────
+    # ── Flush handlers: reload systemd + restart service with new config ──────
     - name: Flush handlers
       ansible.builtin.meta: flush_handlers
 
@@ -203,24 +226,29 @@
         enabled: true
         state: started
 
-    # ── Capture service status for diagnostics ────────────────────────────────
-    - name: Capture employee-api service status
+    # ── Wait for Spring Boot to fully initialize (JVM cold start on t3.small) ─
+    - name: Pause to allow Spring Boot context initialization
+      ansible.builtin.pause:
+        seconds: 30
+
+    # ── Capture journal AFTER pause — shows full startup or crash reason ───────
+    - name: Capture employee-api journal (last 60 lines)
       ansible.builtin.command:
-        cmd: systemctl status employee-api --no-pager -l
-      register: svc_status
+        cmd: journalctl -u employee-api -n 60 --no-pager
+      register: svc_journal
       changed_when: false
       failed_when: false
 
-    - name: Show employee-api service status
+    - name: Show employee-api journal
       ansible.builtin.debug:
-        var: svc_status.stdout_lines
+        var: svc_journal.stdout_lines
 
-    # ── Wait for app to be ready (Spring Boot on t3.small needs up to 3 min) ──
+    # ── Poll port 8080 — up to 2 min after the 30s pause ─────────────────────
     - name: Wait for application to respond on port {{ app_port }}
       ansible.builtin.wait_for:
         host: 127.0.0.1
         port: "{{ app_port }}"
-        timeout: 180
+        timeout: 120
         delay: 5
 
   handlers:
