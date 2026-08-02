@@ -5,8 +5,13 @@ import com.example.employeeapi.exception.GlobalExceptionHandler;
 import com.example.employeeapi.security.JwtAuthFilter;
 import com.example.employeeapi.security.JwtUtil;
 import com.example.employeeapi.security.SecurityConfig;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -26,10 +31,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * API-layer tests for AuthController using @WebMvcTest (web layer only, no full context).
- * SecurityConfig is imported to enforce real security rules; JwtAuthFilter is mocked
- * so the filter chain does not attempt token validation on the /api/auth/login endpoint
- * (which is permit-all anyway).
+ * API-layer tests for AuthController using @WebMvcTest (web layer only).
+ * SecurityConfig is imported to apply real security rules.
+ * JwtAuthFilter is mocked and configured to pass through so requests reach controllers.
+ * AuthenticationManager is mocked to control authentication outcomes per test.
  */
 @WebMvcTest(controllers = AuthController.class)
 @Import({SecurityConfig.class, GlobalExceptionHandler.class})
@@ -39,22 +44,31 @@ class AuthControllerApiTest {
     @Autowired
     private MockMvc mockMvc;
 
-    // AuthController dependencies
     @MockBean
     private AuthenticationManager authManager;
 
     @MockBean
     private JwtUtil jwtUtil;
 
-    // SecurityConfig injects JwtAuthFilter — mock it so the filter is a no-op
+    // SecurityConfig injects JwtAuthFilter — mock it and configure pass-through
     @MockBean
     private JwtAuthFilter jwtAuthFilter;
+
+    @BeforeEach
+    void configureFilterPassThrough() throws Exception {
+        Mockito.doAnswer(inv -> {
+            HttpServletRequest  req   = inv.getArgument(0);
+            HttpServletResponse res   = inv.getArgument(1);
+            FilterChain         chain = inv.getArgument(2);
+            chain.doFilter(req, res);
+            return null;
+        }).when(jwtAuthFilter).doFilter(any(), any(), any());
+    }
 
     @Test
     @DisplayName("POST /api/auth/login returns JWT token for valid credentials")
     void login_success() throws Exception {
-        var auth = new UsernamePasswordAuthenticationToken(
-                "admin", null, List.of());
+        var auth = new UsernamePasswordAuthenticationToken("admin", null, List.of());
         when(authManager.authenticate(any())).thenReturn(auth);
         when(jwtUtil.generateToken("admin")).thenReturn("mock-jwt-token");
 

@@ -10,7 +10,11 @@ import com.example.employeeapi.security.JwtUtil;
 import com.example.employeeapi.security.SecurityConfig;
 import com.example.employeeapi.service.EmployeeService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.*;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -44,12 +48,23 @@ class EmployeeControllerApiTest {
     @MockBean
     private EmployeeService employeeService;
 
-    // SecurityConfig dependencies — must be mocked for context to load
     @MockBean
     private JwtAuthFilter jwtAuthFilter;
 
     @MockBean
     private JwtUtil jwtUtil;
+
+    @BeforeEach
+    void configureFilterPassThrough() throws Exception {
+        // JwtAuthFilter mock must delegate to the chain; otherwise requests never reach controllers
+        Mockito.doAnswer(inv -> {
+            HttpServletRequest  req   = inv.getArgument(0);
+            HttpServletResponse res   = inv.getArgument(1);
+            FilterChain         chain = inv.getArgument(2);
+            chain.doFilter(req, res);
+            return null;
+        }).when(jwtAuthFilter).doFilter(any(), any(), any());
+    }
 
     @Test
     @Order(1)
@@ -175,6 +190,7 @@ class EmployeeControllerApiTest {
     @Order(9)
     @DisplayName("Unauthenticated request to /api/employees returns 401")
     void getAll_unauthorized() throws Exception {
+        // No @WithMockUser — anonymous request should be rejected by Spring Security
         mockMvc.perform(get("/api/employees"))
                 .andExpect(status().isUnauthorized());
     }
