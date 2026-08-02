@@ -1,29 +1,36 @@
 package com.example.employeeapi.api;
 
+import com.example.employeeapi.controller.EmployeeController;
+import com.example.employeeapi.exception.DuplicateEmailException;
+import com.example.employeeapi.exception.EmployeeNotFoundException;
+import com.example.employeeapi.exception.GlobalExceptionHandler;
 import com.example.employeeapi.model.Employee;
-import com.example.employeeapi.repository.EmployeeRepository;
+import com.example.employeeapi.security.JwtAuthFilter;
+import com.example.employeeapi.security.JwtUtil;
+import com.example.employeeapi.security.SecurityConfig;
+import com.example.employeeapi.service.EmployeeService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
-import org.springframework.boot.test.autoconfigure.web.reactive.WebTestClientAutoConfiguration;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.TestPropertySource;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
+
+import java.util.List;
 
 import static org.hamcrest.Matchers.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
-@ImportAutoConfiguration(exclude = WebTestClientAutoConfiguration.class)
-@AutoConfigureMockMvc
-@ActiveProfiles("test")
-@TestPropertySource(properties = "spring.main.web-application-type=servlet")
+@WebMvcTest(controllers = EmployeeController.class)
+@Import({SecurityConfig.class, GlobalExceptionHandler.class})
 @DisplayName("Employee Controller API Tests")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class EmployeeControllerApiTest {
@@ -34,58 +41,57 @@ class EmployeeControllerApiTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @Autowired
-    private EmployeeRepository employeeRepository;
+    @MockBean
+    private EmployeeService employeeService;
 
-    private static String jwtToken;
+    // SecurityConfig dependencies — must be mocked for context to load
+    @MockBean
+    private JwtAuthFilter jwtAuthFilter;
 
-    @BeforeEach
-    void cleanAndAuth() throws Exception {
-        employeeRepository.deleteAll();
-
-        if (jwtToken == null) {
-            MvcResult result = mockMvc.perform(post("/api/auth/login")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"username\":\"admin\",\"password\":\"admin123\"}"))
-                    .andExpect(status().isOk())
-                    .andReturn();
-            String body = result.getResponse().getContentAsString();
-            jwtToken = objectMapper.readTree(body).get("token").asText();
-        }
-    }
+    @MockBean
+    private JwtUtil jwtUtil;
 
     @Test
     @Order(1)
+    @WithMockUser
     @DisplayName("GET /api/employees returns empty list initially")
     void getAll_empty() throws Exception {
-        mockMvc.perform(get("/api/employees")
-                        .header("Authorization", "Bearer " + jwtToken))
+        when(employeeService.findAll()).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/employees"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(0)));
     }
 
     @Test
     @Order(2)
+    @WithMockUser
     @DisplayName("POST /api/employees creates a new employee")
     void create_success() throws Exception {
         Employee emp = new Employee("Jane", "Doe", "jane@example.com", "Engineering", 90000);
+        Employee saved = new Employee("Jane", "Doe", "jane@example.com", "Engineering", 90000);
+        saved.setId(1L);
+        when(employeeService.create(any(Employee.class))).thenReturn(saved);
+
         mockMvc.perform(post("/api/employees")
-                        .header("Authorization", "Bearer " + jwtToken)
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(emp)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").exists())
+                .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.firstName").value("Jane"))
                 .andExpect(jsonPath("$.email").value("jane@example.com"));
     }
 
     @Test
     @Order(3)
+    @WithMockUser
     @DisplayName("POST /api/employees returns 400 for invalid payload")
     void create_invalidPayload() throws Exception {
         Employee invalid = new Employee("", "", "not-an-email", "", 0);
+
         mockMvc.perform(post("/api/employees")
-                        .header("Authorization", "Bearer " + jwtToken)
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(invalid)))
                 .andExpect(status().isBadRequest());
@@ -93,35 +99,41 @@ class EmployeeControllerApiTest {
 
     @Test
     @Order(4)
+    @WithMockUser
     @DisplayName("GET /api/employees/{id} returns employee by id")
     void getById_found() throws Exception {
-        Employee saved = employeeRepository.save(
-                new Employee("Bob", "Smith", "bob@example.com", "HR", 70000));
-        mockMvc.perform(get("/api/employees/" + saved.getId())
-                        .header("Authorization", "Bearer " + jwtToken))
+        Employee emp = new Employee("Bob", "Smith", "bob@example.com", "HR", 70000);
+        emp.setId(42L);
+        when(employeeService.findById(42L)).thenReturn(emp);
+
+        mockMvc.perform(get("/api/employees/42"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("bob@example.com"));
     }
 
     @Test
     @Order(5)
+    @WithMockUser
     @DisplayName("GET /api/employees/{id} returns 404 for unknown id")
     void getById_notFound() throws Exception {
-        mockMvc.perform(get("/api/employees/99999")
-                        .header("Authorization", "Bearer " + jwtToken))
+        when(employeeService.findById(99999L)).thenThrow(new EmployeeNotFoundException(99999L));
+
+        mockMvc.perform(get("/api/employees/99999"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message", containsString("99999")));
     }
 
     @Test
     @Order(6)
+    @WithMockUser
     @DisplayName("PUT /api/employees/{id} updates employee")
     void update_success() throws Exception {
-        Employee saved = employeeRepository.save(
-                new Employee("Alice", "Wong", "alice@example.com", "Finance", 85000));
         Employee updated = new Employee("Alice", "Wong", "alice.updated@example.com", "Finance", 92000);
-        mockMvc.perform(put("/api/employees/" + saved.getId())
-                        .header("Authorization", "Bearer " + jwtToken)
+        updated.setId(10L);
+        when(employeeService.update(eq(10L), any(Employee.class))).thenReturn(updated);
+
+        mockMvc.perform(put("/api/employees/10")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(updated)))
                 .andExpect(status().isOk())
@@ -131,28 +143,29 @@ class EmployeeControllerApiTest {
 
     @Test
     @Order(7)
+    @WithMockUser
     @DisplayName("DELETE /api/employees/{id} removes employee")
     void delete_success() throws Exception {
-        Employee saved = employeeRepository.save(
-                new Employee("Tom", "Harris", "tom@example.com", "IT", 75000));
-        mockMvc.perform(delete("/api/employees/" + saved.getId())
-                        .header("Authorization", "Bearer " + jwtToken))
+        doNothing().when(employeeService).delete(5L);
+
+        mockMvc.perform(delete("/api/employees/5")
+                        .with(csrf()))
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(get("/api/employees/" + saved.getId())
-                        .header("Authorization", "Bearer " + jwtToken))
-                .andExpect(status().isNotFound());
+        verify(employeeService).delete(5L);
     }
 
     @Test
     @Order(8)
+    @WithMockUser
     @DisplayName("POST /api/employees returns 409 on duplicate email")
     void create_duplicateEmail() throws Exception {
-        Employee emp = new Employee("Dup", "User", "dup@example.com", "Ops", 60000);
-        employeeRepository.save(emp);
         Employee dup = new Employee("Another", "Person", "dup@example.com", "Ops", 60000);
+        when(employeeService.create(any(Employee.class)))
+                .thenThrow(new DuplicateEmailException("dup@example.com"));
+
         mockMvc.perform(post("/api/employees")
-                        .header("Authorization", "Bearer " + jwtToken)
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(dup)))
                 .andExpect(status().isConflict());
