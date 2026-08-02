@@ -12,6 +12,7 @@
     app_port: 8080
     java_package: openjdk-17-jre-headless
     report_dir: /opt/employee-api/test-report
+    # jwt_secret is passed in via --extra-vars from the pipeline (never looked up from env)
 
   tasks:
     # ── Wait for SSH ──────────────────────────────────────────────────────────
@@ -79,12 +80,11 @@
         mode: "0644"
       notify: Restart employee-api
 
-    # ── Write .env file ───────────────────────────────────────────────────────
+    # ── Write .env file (jwt_secret passed via --extra-vars, never via lookup) ─
     - name: Write application environment file
       ansible.builtin.copy:
         dest: "{{ app_dir }}/.env"
-        content: |
-          JWT_SECRET={{ lookup('env', 'JWT_SECRET') | default('change-me-in-prod-secret-32chars!!') }}
+        content: "JWT_SECRET={{ jwt_secret }}\n"
         owner: "{{ app_user }}"
         group: "{{ app_group }}"
         mode: "0600"
@@ -165,15 +165,14 @@
         state: link
       notify: Reload nginx
 
-    # ── Copy Surefire HTML report (produced in CI) ────────────────────────────
-    - name: Copy Surefire HTML report to server (if present)
+    # ── Copy Surefire HTML report (downloaded into target/site/ by CI) ────────
+    - name: Copy Surefire HTML report to server
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../target/site/surefire-report.html"
         dest: "{{ report_dir }}/surefire-report.html"
         owner: "{{ app_user }}"
         group: "{{ app_group }}"
         mode: "0644"
-      ignore_errors: true
 
     # ── Flush handlers so service is up before verify ─────────────────────────
     - name: Flush handlers
@@ -197,7 +196,7 @@
       ansible.builtin.wait_for:
         host: 127.0.0.1
         port: "{{ app_port }}"
-        timeout: 60
+        timeout: 90
         delay: 5
 
   handlers:
