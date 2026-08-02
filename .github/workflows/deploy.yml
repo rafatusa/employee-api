@@ -97,6 +97,11 @@ jobs:
       with:
         name: app-jar
         path: target/
+    - name: Download Surefire HTML report artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: test-report
+        path: target/site/
     - name: Install Ansible
       run: pipx install ansible-core
     - name: Write SSH key
