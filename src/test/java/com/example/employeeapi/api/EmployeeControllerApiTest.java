@@ -1,25 +1,20 @@
 package com.example.employeeapi.api;
 
+import com.example.employeeapi.config.TestSecurityConfig;
 import com.example.employeeapi.controller.EmployeeController;
 import com.example.employeeapi.exception.DuplicateEmailException;
 import com.example.employeeapi.exception.EmployeeNotFoundException;
 import com.example.employeeapi.exception.GlobalExceptionHandler;
 import com.example.employeeapi.model.Employee;
-import com.example.employeeapi.security.JwtAuthFilter;
-import com.example.employeeapi.security.JwtUtil;
-import com.example.employeeapi.security.SecurityConfig;
 import com.example.employeeapi.service.EmployeeService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.*;
-import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithAnonymousUser;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -29,12 +24,18 @@ import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+/**
+ * API-layer tests for EmployeeController using @WebMvcTest.
+ *
+ * Uses TestSecurityConfig (no JWT filter, no circular deps) — mirrors production
+ * access rules. EmployeeService is mocked to control data outcomes per test.
+ * Authentication is simulated with @WithMockUser / @WithAnonymousUser.
+ */
 @WebMvcTest(controllers = EmployeeController.class)
-@Import({SecurityConfig.class, GlobalExceptionHandler.class})
+@Import({TestSecurityConfig.class, GlobalExceptionHandler.class})
 @DisplayName("Employee Controller API Tests")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class EmployeeControllerApiTest {
@@ -47,24 +48,6 @@ class EmployeeControllerApiTest {
 
     @MockBean
     private EmployeeService employeeService;
-
-    @MockBean
-    private JwtAuthFilter jwtAuthFilter;
-
-    @MockBean
-    private JwtUtil jwtUtil;
-
-    @BeforeEach
-    void configureFilterPassThrough() throws Exception {
-        // JwtAuthFilter mock must delegate to the chain; otherwise requests never reach controllers
-        Mockito.doAnswer(inv -> {
-            HttpServletRequest  req   = inv.getArgument(0);
-            HttpServletResponse res   = inv.getArgument(1);
-            FilterChain         chain = inv.getArgument(2);
-            chain.doFilter(req, res);
-            return null;
-        }).when(jwtAuthFilter).doFilter(any(), any(), any());
-    }
 
     @Test
     @Order(1)
@@ -89,7 +72,6 @@ class EmployeeControllerApiTest {
         when(employeeService.create(any(Employee.class))).thenReturn(saved);
 
         mockMvc.perform(post("/api/employees")
-                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(emp)))
                 .andExpect(status().isCreated())
@@ -106,7 +88,6 @@ class EmployeeControllerApiTest {
         Employee invalid = new Employee("", "", "not-an-email", "", 0);
 
         mockMvc.perform(post("/api/employees")
-                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(invalid)))
                 .andExpect(status().isBadRequest());
@@ -148,7 +129,6 @@ class EmployeeControllerApiTest {
         when(employeeService.update(eq(10L), any(Employee.class))).thenReturn(updated);
 
         mockMvc.perform(put("/api/employees/10")
-                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(updated)))
                 .andExpect(status().isOk())
@@ -163,8 +143,7 @@ class EmployeeControllerApiTest {
     void delete_success() throws Exception {
         doNothing().when(employeeService).delete(5L);
 
-        mockMvc.perform(delete("/api/employees/5")
-                        .with(csrf()))
+        mockMvc.perform(delete("/api/employees/5"))
                 .andExpect(status().isNoContent());
 
         verify(employeeService).delete(5L);
@@ -180,7 +159,6 @@ class EmployeeControllerApiTest {
                 .thenThrow(new DuplicateEmailException("dup@example.com"));
 
         mockMvc.perform(post("/api/employees")
-                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(dup)))
                 .andExpect(status().isConflict());
@@ -188,9 +166,9 @@ class EmployeeControllerApiTest {
 
     @Test
     @Order(9)
+    @WithAnonymousUser
     @DisplayName("Unauthenticated request to /api/employees returns 401")
     void getAll_unauthorized() throws Exception {
-        // No @WithMockUser — anonymous request should be rejected by Spring Security
         mockMvc.perform(get("/api/employees"))
                 .andExpect(status().isUnauthorized());
     }

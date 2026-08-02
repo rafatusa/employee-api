@@ -1,17 +1,11 @@
 package com.example.employeeapi.api;
 
+import com.example.employeeapi.config.TestSecurityConfig;
 import com.example.employeeapi.controller.AuthController;
 import com.example.employeeapi.exception.GlobalExceptionHandler;
-import com.example.employeeapi.security.JwtAuthFilter;
 import com.example.employeeapi.security.JwtUtil;
-import com.example.employeeapi.security.SecurityConfig;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -26,18 +20,17 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * API-layer tests for AuthController using @WebMvcTest (web layer only).
- * SecurityConfig is imported to apply real security rules.
- * JwtAuthFilter is mocked and configured to pass through so requests reach controllers.
- * AuthenticationManager is mocked to control authentication outcomes per test.
+ * API-layer tests for AuthController using @WebMvcTest.
+ *
+ * Uses TestSecurityConfig (no JWT filter, no circular deps) to mirror production
+ * access rules. AuthenticationManager and JwtUtil are mocked to control outcomes.
  */
 @WebMvcTest(controllers = AuthController.class)
-@Import({SecurityConfig.class, GlobalExceptionHandler.class})
+@Import({TestSecurityConfig.class, GlobalExceptionHandler.class})
 @DisplayName("Auth Controller API Tests")
 class AuthControllerApiTest {
 
@@ -50,21 +43,6 @@ class AuthControllerApiTest {
     @MockBean
     private JwtUtil jwtUtil;
 
-    // SecurityConfig injects JwtAuthFilter — mock it and configure pass-through
-    @MockBean
-    private JwtAuthFilter jwtAuthFilter;
-
-    @BeforeEach
-    void configureFilterPassThrough() throws Exception {
-        Mockito.doAnswer(inv -> {
-            HttpServletRequest  req   = inv.getArgument(0);
-            HttpServletResponse res   = inv.getArgument(1);
-            FilterChain         chain = inv.getArgument(2);
-            chain.doFilter(req, res);
-            return null;
-        }).when(jwtAuthFilter).doFilter(any(), any(), any());
-    }
-
     @Test
     @DisplayName("POST /api/auth/login returns JWT token for valid credentials")
     void login_success() throws Exception {
@@ -73,7 +51,6 @@ class AuthControllerApiTest {
         when(jwtUtil.generateToken("admin")).thenReturn("mock-jwt-token");
 
         mockMvc.perform(post("/api/auth/login")
-                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"username\":\"admin\",\"password\":\"admin123\"}"))
                 .andExpect(status().isOk())
@@ -87,7 +64,6 @@ class AuthControllerApiTest {
         when(authManager.authenticate(any())).thenThrow(new BadCredentialsException("bad creds"));
 
         mockMvc.perform(post("/api/auth/login")
-                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"username\":\"admin\",\"password\":\"wrongpassword\"}"))
                 .andExpect(status().isUnauthorized())
@@ -100,7 +76,6 @@ class AuthControllerApiTest {
         when(authManager.authenticate(any())).thenThrow(new BadCredentialsException("unknown user"));
 
         mockMvc.perform(post("/api/auth/login")
-                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"username\":\"nobody\",\"password\":\"pass\"}"))
                 .andExpect(status().isUnauthorized());
@@ -110,7 +85,6 @@ class AuthControllerApiTest {
     @DisplayName("POST /api/auth/login returns 400 for missing username")
     void login_missingUsername() throws Exception {
         mockMvc.perform(post("/api/auth/login")
-                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"username\":\"\",\"password\":\"admin123\"}"))
                 .andExpect(status().isBadRequest());
@@ -120,7 +94,6 @@ class AuthControllerApiTest {
     @DisplayName("POST /api/auth/login returns 400 for missing password")
     void login_missingPassword() throws Exception {
         mockMvc.perform(post("/api/auth/login")
-                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"username\":\"admin\",\"password\":\"\"}"))
                 .andExpect(status().isBadRequest());
