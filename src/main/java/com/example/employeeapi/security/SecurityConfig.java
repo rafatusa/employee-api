@@ -3,6 +3,7 @@ package com.example.employeeapi.security;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
@@ -26,7 +27,12 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter) {
+    // @Lazy breaks the circular dependency:
+    //   JwtAuthFilter needs UserDetailsService (defined here as a @Bean)
+    //   SecurityConfig needs JwtAuthFilter
+    // Spring resolves this by injecting a proxy for JwtAuthFilter; the real
+    // bean is created once UserDetailsService is available.
+    public SecurityConfig(@Lazy JwtAuthFilter jwtAuthFilter) {
         this.jwtAuthFilter = jwtAuthFilter;
     }
 
