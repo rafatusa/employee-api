@@ -12,7 +12,7 @@
     app_port: 8080
     java_package: openjdk-17-jre-headless
     report_dir: /opt/employee-api/test-report
-    # jwt_secret is passed in via --extra-vars from the pipeline (never looked up from env)
+    # jwt_secret is injected via --extra-vars from the pipeline (never lookup env)
 
   tasks:
     # ── Wait for SSH ──────────────────────────────────────────────────────────
@@ -70,6 +70,19 @@
         group: "{{ app_group }}"
         mode: "0755"
 
+    # ── Remove stale JARs before deploying fresh one ──────────────────────────
+    - name: Remove any existing JARs from app directory
+      ansible.builtin.find:
+        paths: "{{ app_dir }}"
+        patterns: "*.jar"
+      register: old_jars
+
+    - name: Delete stale JAR files
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ old_jars.files }}"
+
     # ── Deploy JAR ────────────────────────────────────────────────────────────
     - name: Copy application JAR
       ansible.builtin.copy:
@@ -80,17 +93,6 @@
         mode: "0644"
       notify: Restart employee-api
 
-    # ── Write .env file (jwt_secret passed via --extra-vars, never via lookup) ─
-    - name: Write application environment file
-      ansible.builtin.copy:
-        dest: "{{ app_dir }}/.env"
-        content: "JWT_SECRET={{ jwt_secret }}\n"
-        owner: "{{ app_user }}"
-        group: "{{ app_group }}"
-        mode: "0600"
-      no_log: true
-      notify: Restart employee-api
-
     # ── Find deployed JAR ─────────────────────────────────────────────────────
     - name: Find deployed JAR file
       ansible.builtin.find:
@@ -98,11 +100,20 @@
         patterns: "*.jar"
       register: jar_files
 
+    - name: Fail early if no JAR found
+      ansible.builtin.fail:
+        msg: "No JAR file found in {{ app_dir }} — artifact upload may have failed"
+      when: jar_files.files | length == 0
+
     - name: Set JAR path fact
       ansible.builtin.set_fact:
         jar_path: "{{ jar_files.files | map(attribute='path') | first }}"
 
-    # ── systemd service ───────────────────────────────────────────────────────
+    - name: Show JAR path being deployed
+      ansible.builtin.debug:
+        msg: "Deploying JAR: {{ jar_path }}"
+
+    # ── systemd service (JWT_SECRET passed as JVM system property) ────────────
     - name: Write systemd unit for employee-api
       ansible.builtin.copy:
         dest: /etc/systemd/system/employee-api.service
@@ -115,8 +126,8 @@
           User={{ app_user }}
           Group={{ app_group }}
           WorkingDirectory={{ app_dir }}
-          EnvironmentFile={{ app_dir }}/.env
-          ExecStart=/usr/bin/java -jar {{ jar_path }} --server.port={{ app_port }} --server.address=127.0.0.1
+          Environment="JWT_SECRET={{ jwt_secret }}"
+          ExecStart=/usr/bin/java -Xms128m -Xmx384m -jar {{ jar_path }} --server.port={{ app_port }} --server.address=127.0.0.1
           SuccessExitStatus=143
           TimeoutStopSec=30
           Restart=on-failure
@@ -125,6 +136,7 @@
           [Install]
           WantedBy=multi-user.target
         mode: "0644"
+      no_log: true
       notify:
         - Reload systemd
         - Restart employee-api
@@ -174,7 +186,7 @@
         group: "{{ app_group }}"
         mode: "0644"
 
-    # ── Flush handlers so service is up before verify ─────────────────────────
+    # ── Flush handlers so service restarts with latest config ─────────────────
     - name: Flush handlers
       ansible.builtin.meta: flush_handlers
 
@@ -191,13 +203,25 @@
         enabled: true
         state: started
 
+    # ── Capture service status for diagnostics ────────────────────────────────
+    - name: Capture employee-api service status
+      ansible.builtin.command:
+        cmd: systemctl status employee-api --no-pager -l
+      register: svc_status
+      changed_when: false
+      failed_when: false
+
+    - name: Show employee-api service status
+      ansible.builtin.debug:
+        var: svc_status.stdout_lines
+
     # ── Wait for app to be ready ──────────────────────────────────────────────
     - name: Wait for application to respond on port {{ app_port }}
       ansible.builtin.wait_for:
         host: 127.0.0.1
         port: "{{ app_port }}"
-        timeout: 90
-        delay: 5
+        timeout: 120
+        delay: 10
 
   handlers:
     - name: Reload systemd
