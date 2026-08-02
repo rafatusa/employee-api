@@ -1,0 +1,14 @@
+# udap:meta cloud=aws region=us-east-2 target=ec2
+
+user: Client { udap-type: generic.user }
+vpc: VPC (us-east-2) {
+  nginx: Nginx Reverse Proxy { udap-type: aws.ec2 }
+  app: Spring Boot Employee API { udap-type: aws.ec2 }
+  db: H2 In-Memory Database { udap-type: generic.db }
+}
+ci: GitHub Actions CI/CD { udap-type: generic.app }
+
+user -> vpc.nginx: HTTP :80
+vpc.nginx -> vpc.app: proxy :8080
+vpc.app -> vpc.db: JDBC (in-process)
+ci -> vpc.nginx: deploy + verify

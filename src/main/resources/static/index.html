@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Employee API</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f4f8; color: #1a202c; min-height: 100vh; display: flex; flex-direction: column; }
+    header { background: linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%); color: white; padding: 3rem 2rem; text-align: center; }
+    header h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 0.5rem; }
+    header p { font-size: 1.1rem; opacity: 0.85; }
+    .badge { display: inline-block; background: rgba(255,255,255,0.2); border-radius: 20px; padding: 0.25rem 0.75rem; font-size: 0.8rem; margin-top: 0.75rem; }
+    main { max-width: 900px; margin: 2rem auto; padding: 0 1.5rem; flex: 1; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem; margin-bottom: 2rem; }
+    .card { background: white; border-radius: 10px; padding: 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .card h2 { font-size: 1rem; font-weight: 600; color: #4a5568; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; }
+    .endpoint { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; border-bottom: 1px solid #f0f0f0; font-size: 0.9rem; }
+    .endpoint:last-child { border-bottom: none; }
+    .method { font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.4rem; border-radius: 4px; min-width: 46px; text-align: center; }
+    .get { background: #ebf8ff; color: #2b6cb0; }
+    .post { background: #f0fff4; color: #276749; }
+    .put { background: #fffbeb; color: #b7791f; }
+    .del { background: #fff5f5; color: #c53030; }
+    .path { font-family: monospace; color: #2d3748; }
+    .stack-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0; font-size: 0.9rem; border-bottom: 1px solid #f0f0f0; }
+    .stack-item:last-child { border-bottom: none; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #48bb78; flex-shrink: 0; }
+    .try-section { background: white; border-radius: 10px; padding: 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 2rem; }
+    .try-section h2 { font-size: 1rem; font-weight: 600; color: #4a5568; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; }
+    .code-block { background: #1a202c; color: #e2e8f0; padding: 1rem 1.25rem; border-radius: 8px; font-family: monospace; font-size: 0.82rem; line-height: 1.6; overflow-x: auto; }
+    .step { color: #68d391; }
+    footer { text-align: center; padding: 1.5rem; color: #718096; font-size: 0.85rem; border-top: 1px solid #e2e8f0; background: white; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>&#128188; Employee API</h1>
+    <p>Spring Boot REST API &mdash; CRUD + JWT Authentication</p>
+    <span class="badge">&#9679; Running on Java 17 &nbsp;|&nbsp; Spring Boot 3 &nbsp;|&nbsp; H2 in-memory</span>
+  </header>
+
+  <main>
+    <div class="grid">
+      <div class="card">
+        <h2>Auth Endpoints</h2>
+        <div class="endpoint">
+          <span class="method post">POST</span>
+          <span class="path">/api/auth/login</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Employee Endpoints</h2>
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/employees</span>
+        </div>
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="path">/api/employees/{id}</span>
+        </div>
+        <div class="endpoint">
+          <span class="method post">POST</span>
+          <span class="path">/api/employees</span>
+        </div>
+        <div class="endpoint">
+          <span class="method put">PUT</span>
+          <span class="path">/api/employees/{id}</span>
+        </div>
+        <div class="endpoint">
+          <span class="method del">DEL</span>
+          <span class="path">/api/employees/{id}</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Stack</h2>
+        <div class="stack-item"><span class="dot"></span>Java 17 / Spring Boot 3.3</div>
+        <div class="stack-item"><span class="dot"></span>Spring Security + JWT</div>
+        <div class="stack-item"><span class="dot"></span>H2 In-Memory Database</div>
+        <div class="stack-item"><span class="dot"></span>nginx reverse proxy</div>
+        <div class="stack-item"><span class="dot"></span>AWS EC2 (us-east-2)</div>
+        <div class="stack-item"><span class="dot"></span>Deployed via GitHub Actions</div>
+      </div>
+    </div>
+
+    <div class="try-section">
+      <h2>Quick Start</h2>
+      <div class="code-block">
+<span class="step"># 1. Login and capture the token</span>
+TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
+<span class="step"># 2. Create an employee</span>
+curl -X POST http://localhost:8080/api/employees \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"firstName":"Jane","lastName":"Doe","email":"jane@example.com","department":"Engineering","salary":90000}'
+
+<span class="step"># 3. List all employees</span>
+curl http://localhost:8080/api/employees \
+  -H "Authorization: Bearer $TOKEN"</div>
+    </div>
+  </main>
+
+  <footer>
+    Employee API &mdash; deployed with <strong>UDAP</strong> &nbsp;|&nbsp; <a href="/actuator/health" style="color:#4299e1">Health Check</a>
+  </footer>
+</body>
+</html>

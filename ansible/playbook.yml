@@ -1,0 +1,217 @@
+---
+- name: Configure Employee API server
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    app_name: employee-api
+    app_dir: /opt/employee-api
+    app_user: appuser
+    app_group: appgroup
+    app_port: 8080
+    java_package: openjdk-17-jre-headless
+    report_dir: /opt/employee-api/test-report
+
+  tasks:
+    # ── Wait for SSH ──────────────────────────────────────────────────────────
+    - name: Wait for port 22 to be reachable
+      ansible.builtin.wait_for_connection:
+        delay: 5
+        timeout: 120
+
+    # ── System packages ───────────────────────────────────────────────────────
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      retries: 3
+      delay: 10
+      register: apt_update
+      until: apt_update is succeeded
+
+    - name: Install Java 17 JRE and nginx
+      ansible.builtin.apt:
+        name:
+          - "{{ java_package }}"
+          - nginx
+          - curl
+        state: present
+
+    # ── App user & directories ────────────────────────────────────────────────
+    - name: Create app group
+      ansible.builtin.group:
+        name: "{{ app_group }}"
+        system: true
+
+    - name: Create app user
+      ansible.builtin.user:
+        name: "{{ app_user }}"
+        group: "{{ app_group }}"
+        system: true
+        shell: /usr/sbin/nologin
+        home: "{{ app_dir }}"
+        create_home: false
+
+    - name: Create app directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0755"
+
+    - name: Create test report directory
+      ansible.builtin.file:
+        path: "{{ report_dir }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0755"
+
+    # ── Deploy JAR ────────────────────────────────────────────────────────────
+    - name: Copy application JAR
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../target/"
+        dest: "{{ app_dir }}/"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0644"
+      notify: Restart employee-api
+
+    # ── Write .env file ───────────────────────────────────────────────────────
+    - name: Write application environment file
+      ansible.builtin.copy:
+        dest: "{{ app_dir }}/.env"
+        content: |
+          JWT_SECRET={{ lookup('env', 'JWT_SECRET') | default('change-me-in-prod-secret-32chars!!') }}
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0600"
+      no_log: true
+      notify: Restart employee-api
+
+    # ── Find deployed JAR ─────────────────────────────────────────────────────
+    - name: Find deployed JAR file
+      ansible.builtin.find:
+        paths: "{{ app_dir }}"
+        patterns: "*.jar"
+      register: jar_files
+
+    - name: Set JAR path fact
+      ansible.builtin.set_fact:
+        jar_path: "{{ jar_files.files | map(attribute='path') | first }}"
+
+    # ── systemd service ───────────────────────────────────────────────────────
+    - name: Write systemd unit for employee-api
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/employee-api.service
+        content: |
+          [Unit]
+          Description=Employee API Spring Boot Application
+          After=network.target
+
+          [Service]
+          User={{ app_user }}
+          Group={{ app_group }}
+          WorkingDirectory={{ app_dir }}
+          EnvironmentFile={{ app_dir }}/.env
+          ExecStart=/usr/bin/java -jar {{ jar_path }} --server.port={{ app_port }} --server.address=127.0.0.1
+          SuccessExitStatus=143
+          TimeoutStopSec=30
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: "0644"
+      notify:
+        - Reload systemd
+        - Restart employee-api
+
+    # ── nginx config ──────────────────────────────────────────────────────────
+    - name: Remove nginx default site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Reload nginx
+
+    - name: Write nginx virtual host config
+      ansible.builtin.copy:
+        dest: /etc/nginx/sites-available/employee-api
+        content: |
+          server {
+              listen 80;
+              server_name _;
+
+              client_max_body_size 10M;
+
+              location / {
+                  proxy_pass         http://127.0.0.1:{{ app_port }};
+                  proxy_set_header   Host              $host;
+                  proxy_set_header   X-Real-IP         $remote_addr;
+                  proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+                  proxy_set_header   X-Forwarded-Proto $scheme;
+                  proxy_read_timeout 60s;
+              }
+          }
+        mode: "0644"
+      notify: Reload nginx
+
+    - name: Enable nginx virtual host
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/employee-api
+        dest: /etc/nginx/sites-enabled/employee-api
+        state: link
+      notify: Reload nginx
+
+    # ── Copy Surefire HTML report (produced in CI) ────────────────────────────
+    - name: Copy Surefire HTML report to server (if present)
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../target/site/surefire-report.html"
+        dest: "{{ report_dir }}/surefire-report.html"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0644"
+      ignore_errors: true
+
+    # ── Flush handlers so service is up before verify ─────────────────────────
+    - name: Flush handlers
+      ansible.builtin.meta: flush_handlers
+
+    # ── Enable and start services ─────────────────────────────────────────────
+    - name: Enable and start employee-api
+      ansible.builtin.systemd:
+        name: employee-api
+        enabled: true
+        state: started
+
+    - name: Enable and start nginx
+      ansible.builtin.systemd:
+        name: nginx
+        enabled: true
+        state: started
+
+    # ── Wait for app to be ready ──────────────────────────────────────────────
+    - name: Wait for application to respond on port {{ app_port }}
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ app_port }}"
+        timeout: 60
+        delay: 5
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart employee-api
+      ansible.builtin.systemd:
+        name: employee-api
+        state: restarted
+      listen: Restart employee-api
+
+    - name: Reload nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded
