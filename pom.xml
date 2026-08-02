@@ -87,20 +87,11 @@
       <optional>true</optional>
     </dependency>
 
-    <!-- Test — exclude spring-webflux so WebTestClientAutoConfiguration's
-         @ConditionalOnClass(WebTestClient.class) evaluates false in the
-         @WebMvcTest slice and the reactive/servlet context conflict is avoided.
-         spring-webflux enters via spring-boot-starter-test → reactor-test. -->
+    <!-- Test -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
-      <exclusions>
-        <exclusion>
-          <groupId>org.springframework</groupId>
-          <artifactId>spring-webflux</artifactId>
-        </exclusion>
-      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.springframework.security</groupId>
@@ -116,7 +107,7 @@
         <artifactId>spring-boot-maven-plugin</artifactId>
       </plugin>
 
-      <!-- Surefire: unit + API tests (*Test / *Tests) -->
+      <!-- Surefire: unit + API tests (*Test.java, *Tests.java) -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
@@ -131,7 +122,7 @@
         </configuration>
       </plugin>
 
-      <!-- Failsafe: integration tests (*IT) -->
+      <!-- Failsafe: integration tests (*IT.java) -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-failsafe-plugin</artifactId>

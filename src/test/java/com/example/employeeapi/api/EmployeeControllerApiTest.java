@@ -1,21 +1,19 @@
 package com.example.employeeapi.api;
 
-import com.example.employeeapi.config.TestSecurityConfig;
-import com.example.employeeapi.controller.EmployeeController;
 import com.example.employeeapi.exception.DuplicateEmailException;
 import com.example.employeeapi.exception.EmployeeNotFoundException;
-import com.example.employeeapi.exception.GlobalExceptionHandler;
 import com.example.employeeapi.model.Employee;
 import com.example.employeeapi.service.EmployeeService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithAnonymousUser;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -28,14 +26,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * API-layer tests for EmployeeController using @WebMvcTest.
+ * API-layer tests for EmployeeController.
  *
- * Uses TestSecurityConfig (no JWT filter, no circular deps) — mirrors production
- * access rules. EmployeeService is mocked to control data outcomes per test.
- * Authentication is simulated with @WithMockUser / @WithAnonymousUser.
+ * Uses @SpringBootTest (MOCK web env) + @AutoConfigureMockMvc so the real
+ * SecurityConfig and JwtAuthFilter load correctly. EmployeeService is @MockBean
+ * to control data outcomes. @WithMockUser / @WithAnonymousUser simulate auth.
  */
-@WebMvcTest(controllers = EmployeeController.class)
-@Import({TestSecurityConfig.class, GlobalExceptionHandler.class})
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
 @DisplayName("Employee Controller API Tests")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class EmployeeControllerApiTest {

@@ -1,19 +1,17 @@
 package com.example.employeeapi.api;
 
-import com.example.employeeapi.config.TestSecurityConfig;
-import com.example.employeeapi.controller.AuthController;
-import com.example.employeeapi.exception.GlobalExceptionHandler;
 import com.example.employeeapi.security.JwtUtil;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -24,13 +22,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * API-layer tests for AuthController using @WebMvcTest.
+ * API-layer tests for AuthController.
  *
- * Uses TestSecurityConfig (no JWT filter, no circular deps) to mirror production
- * access rules. AuthenticationManager and JwtUtil are mocked to control outcomes.
+ * Uses @SpringBootTest (MOCK web env) + @AutoConfigureMockMvc so the full
+ * application context loads with the real SecurityConfig (circular dep resolved
+ * via @Lazy). AuthenticationManager and JwtUtil are @MockBean so test outcomes
+ * are deterministic without real credentials.
  */
-@WebMvcTest(controllers = AuthController.class)
-@Import({TestSecurityConfig.class, GlobalExceptionHandler.class})
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
 @DisplayName("Auth Controller API Tests")
 class AuthControllerApiTest {
 
@@ -73,7 +74,7 @@ class AuthControllerApiTest {
     @Test
     @DisplayName("POST /api/auth/login returns 401 for unknown user")
     void login_unknownUser() throws Exception {
-        when(authManager.authenticate(any())).thenThrow(new BadCredentialsException("unknown user"));
+        when(authManager.authenticate(any())).thenThrow(new BadCredentialsException("unknown"));
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
