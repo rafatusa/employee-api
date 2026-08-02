@@ -119,6 +119,15 @@
           <excludes>
             <exclude>**/*IT.java</exclude>
           </excludes>
+          <!-- Globally exclude WebTestClientAutoConfiguration from all test contexts.
+               spring-boot-test-autoconfigure always registers it in the @WebMvcTest
+               slice regardless of classpath; this system property prevents it loading
+               and eliminates the reactor/servlet context conflict. -->
+          <systemPropertyVariables>
+            <spring.autoconfigure.exclude>
+              org.springframework.boot.test.autoconfigure.web.reactive.WebTestClientAutoConfiguration
+            </spring.autoconfigure.exclude>
+          </systemPropertyVariables>
         </configuration>
       </plugin>
 
@@ -138,6 +147,11 @@
           <includes>
             <include>**/*IT.java</include>
           </includes>
+          <systemPropertyVariables>
+            <spring.autoconfigure.exclude>
+              org.springframework.boot.test.autoconfigure.web.reactive.WebTestClientAutoConfiguration
+            </spring.autoconfigure.exclude>
+          </systemPropertyVariables>
         </configuration>
       </plugin>
     </plugins>
