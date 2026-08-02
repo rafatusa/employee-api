@@ -87,11 +87,20 @@
       <optional>true</optional>
     </dependency>
 
-    <!-- Test -->
+    <!-- Test — exclude spring-webflux so WebTestClientAutoConfiguration's
+         @ConditionalOnClass(WebTestClient.class) evaluates false in the
+         @WebMvcTest slice and the reactive/servlet context conflict is avoided.
+         spring-webflux enters via spring-boot-starter-test → reactor-test. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>org.springframework</groupId>
+          <artifactId>spring-webflux</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.springframework.security</groupId>
@@ -119,15 +128,6 @@
           <excludes>
             <exclude>**/*IT.java</exclude>
           </excludes>
-          <!-- Globally exclude WebTestClientAutoConfiguration from all test contexts.
-               spring-boot-test-autoconfigure always registers it in the @WebMvcTest
-               slice regardless of classpath; this system property prevents it loading
-               and eliminates the reactor/servlet context conflict. -->
-          <systemPropertyVariables>
-            <spring.autoconfigure.exclude>
-              org.springframework.boot.test.autoconfigure.web.reactive.WebTestClientAutoConfiguration
-            </spring.autoconfigure.exclude>
-          </systemPropertyVariables>
         </configuration>
       </plugin>
 
@@ -147,11 +147,6 @@
           <includes>
             <include>**/*IT.java</include>
           </includes>
-          <systemPropertyVariables>
-            <spring.autoconfigure.exclude>
-              org.springframework.boot.test.autoconfigure.web.reactive.WebTestClientAutoConfiguration
-            </spring.autoconfigure.exclude>
-          </systemPropertyVariables>
         </configuration>
       </plugin>
     </plugins>
